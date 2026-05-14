@@ -1,0 +1,71 @@
+# Promptable segmentation service.
+#
+# Contract: caller provides a target image and either a stored reference
+# name (named mode) or inline (reference_image, reference_mask) pairs
+# (inline mode). The service returns a mask describing the same object
+# class the reference depicts. Capability of the underlying backend is
+# expressed implicitly via the (has_mask, has_bbox) booleans on the
+# response — sam_manager does NOT expose `capability_level`,
+# `backend_name`, or `inference_latency_ms` on the wire (those live in
+# the node startup config / metrics).
+#
+# Reference mode is fixed at node startup via the `reference_mode`
+# parameter (named | inline). Mixing modes per-request is not supported
+# (Rule of Three — runtime mode switching is deferred until a third
+# backend demands it).
+
+# ------------------------------ Request -------------------------------
+std_msgs/Header header
+sensor_msgs/Image image
+
+# Camera-to-base_link transform. Carried in the request so the core stays
+# ROS-agnostic and does not tf2-lookup. If the user does not provide one,
+# the node falls back to its `default_camera_tf` startup parameter (test
+# convenience). A malformed or missing-without-default transform emits
+# status_code 8 INVALID_TF.
+geometry_msgs/TransformStamped camera_tf
+
+# Named mode: lookup `prompts_dir/<reference_name>/{image.png,mask.png}`
+# from the PromptStore at request time. PROMPT_NOT_FOUND -> status_code 5.
+string reference_name
+
+# Inline mode: caller carries the reference blob directly. Lengths of
+# reference_images and reference_masks MUST match (status_code 7 otherwise)
+# and each (image[i], mask[i]) pair MUST have identical dimensions
+# (status_code 6 otherwise).
+sensor_msgs/Image[] reference_images
+sensor_msgs/Image[] reference_masks
+---
+# ------------------------------ Response ------------------------------
+std_msgs/Header header
+sam_manager_msgs/MaskRLE mask_rle
+sensor_msgs/RegionOfInterest bbox
+float32 confidence
+
+# Implicit capability indicator. The internal capability_level
+# (PIXEL_MASK / COARSE_BBOX / ROI_ONLY) is NOT serialised on the wire —
+# the (has_mask, has_bbox) pair lets downstream branch without learning
+# the internal naming. A backend that can only emit a bbox MUST set
+# has_mask=false + mask_rle.counts=[] (faking a placeholder mask with
+# has_mask=true is the CLAUDE.md anti-pattern #3 "fake mask").
+bool has_mask
+bool has_bbox
+
+# 0 = OK; 1..11 are documented errors. Reserved numbering — removed
+# codes stay reserved and never get reassigned, so older subscribers
+# never see a number reused for a different meaning.
+#
+#   0  OK                          (no emit; happy path)
+#   1  EMPTY_MASK                  inference returned an all-zero mask
+#   2  LOW_CONFIDENCE              confidence < node startup threshold
+#   3  INVALID_IMAGE               target image decode failure / bad dims
+#   4  INVALID_HEADER              frame_id missing / timestamp anomaly
+#   5  PROMPT_NOT_FOUND            named mode: reference_name not in store
+#   6  REFERENCE_SIZE_MISMATCH     inline image[i].size != mask[i].size
+#   7  REFERENCE_COUNT_MISMATCH    inline len(images) != len(masks)
+#   8  INVALID_TF                  camera_tf malformed / NaN / inf / absent without default
+#   9  QUEUE_FULL                  request queue at capacity
+#  10  TIMEOUT                     queue wait + inference > node timeout
+#  11  BACKEND_ERROR               backend raised (GPU OOM / CUDA error / ...)
+uint8 status_code
+string error_message
