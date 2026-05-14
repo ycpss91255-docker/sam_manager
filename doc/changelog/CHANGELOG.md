@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Fields intentionally absent from the wire: `capability_level`, `backend_name`, `inference_latency_ms` (startup config / metrics only — capability degradation is expressed implicitly through `has_mask` + `has_bbox`); `depth`, `class_label`, `category`, `text_prompt`, `mm_per_pixel`, `distance`, `angle`, `aligned` (application-layer responsibilities).
 - `package.xml` + `CMakeLists.txt` for `sam_manager_msgs` (ament_cmake + rosidl_default_generators; depends on std_msgs, sensor_msgs, geometry_msgs).
 
+### Added (CI)
+
+- `.github/workflows/main.yaml` — single `build` job runs `colcon build --packages-select sam_manager_msgs` inside `ros:humble-ros-base` on `ubuntu-latest`, then `ros2 interface show` smoke-checks `srv/SegmentFromReference` and `msg/MaskRLE`. Job name `build` is kept stable so `main` branch protection can require it by name (added via `gh api PATCH .../branches/main/protection` after the workflow's first green run). Workflow triggers on push to `main`, tag push (`v*`), pull requests, and manual dispatch.
+
 ### Notes
 
 - Package naming: the upstream CoreSAM design docs (`coreSAM_ws/CLAUDE.md`, `.claude/skills/ros2-msg-design/SKILL.md`) use the placeholder name `coresam_msgs`; the actual package ships as `sam_manager_msgs` to reflect the "manages SAM-family backends" role. The harness CLAUDE.md will be updated in a follow-up to match.

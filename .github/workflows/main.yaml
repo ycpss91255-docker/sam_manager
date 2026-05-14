@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Single job named `build` so main branch protection can require it
+  # by name (gh api PUT .../branches/main/protection
+  # required_status_checks.contexts=["build"]). Keep the name stable
+  # across edits — renaming it breaks the protection rule.
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    container:
+      image: ros:humble-ros-base
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install rosdep dependencies
+        shell: bash
+        run: |
+          apt-get update
+          rosdep update --rosdistro humble
+          rosdep install --from-paths src --ignore-src -r -y
+
+      - name: colcon build sam_manager_msgs
+        shell: bash
+        run: |
+          . /opt/ros/humble/setup.bash
+          colcon build \
+            --packages-select sam_manager_msgs \
+            --event-handlers console_direct+
+
+      - name: ros2 interface show (smoke)
+        shell: bash
+        run: |
+          . /opt/ros/humble/setup.bash
+          . install/setup.bash
+          ros2 interface show sam_manager_msgs/srv/SegmentFromReference
+          ros2 interface show sam_manager_msgs/msg/MaskRLE
