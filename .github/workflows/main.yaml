@@ -32,15 +32,15 @@ jobs:
           rosdep update --rosdistro humble
           rosdep install --from-paths src --ignore-src -r -y
 
-      - name: Install pip deps not in rosdep (structlog)
+      - name: Install pip deps not in rosdep (structlog + pytest-cov)
         shell: bash
         run: |
           # ros:humble-ros-base ships without pip; install it first.
-          # structlog has no `python3-structlog` rosdep mapping on
-          # Ubuntu 22.04 so we install via pip until the Layer 1
-          # docker scaffold can bake it into the image.
+          # structlog + pytest-cov have no rosdep mapping on Ubuntu
+          # 22.04 so we install via pip until the Layer 1 docker
+          # scaffold can bake them into the image.
           apt-get install -y --no-install-recommends python3-pip
-          python3 -m pip install structlog
+          python3 -m pip install structlog pytest-cov
 
       - name: colcon build sam_manager_msgs + sam_manager
         shell: bash
@@ -67,3 +67,21 @@ jobs:
             --packages-select sam_manager \
             --event-handlers console_direct+
           colcon test-result --verbose
+
+      - name: pytest coverage (>= 80%)
+        shell: bash
+        run: |
+          # colcon test runs pytest internally but doesn't expose
+          # coverage. Re-run pytest with --cov against the installed
+          # sam_manager module to enforce the line-coverage threshold
+          # and surface a term-missing report in the CI log.
+          . /opt/ros/humble/setup.bash
+          . install/setup.bash
+          python3 -m pytest \
+            src/sam_manager/test/test_backend.py \
+            src/sam_manager/test/test_mock.py \
+            src/sam_manager/test/test_error_handler.py \
+            --cov=sam_manager \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            --cov-fail-under=80

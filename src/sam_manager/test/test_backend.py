@@ -35,3 +35,25 @@ def test_default_health_check_returns_true():
     """Default health_check() reports healthy."""
     backend = MockBackend()
     assert backend.health_check() is True
+
+
+def test_subclass_can_override_warmup():
+    """Subclasses may override warmup() with concrete logic."""
+    calls: list[str] = []
+
+    class WarmupBackend(MockBackend):
+        def warmup(self) -> None:
+            calls.append("warmed")
+
+    b = WarmupBackend()
+    b.warmup()
+    assert calls == ["warmed"]
+
+
+def test_subclass_can_override_health_check_returning_false():
+    """Subclasses may override health_check() to report unhealthy."""
+    class UnhealthyBackend(MockBackend):
+        def health_check(self) -> bool:
+            return False
+
+    assert UnhealthyBackend().health_check() is False

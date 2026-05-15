@@ -49,12 +49,22 @@ class MockBackend(BackendInterface):
         )
 
         height, width = target.shape[:2]
-        half = int(np.sqrt(self._coverage) * 0.5 * min(height, width))
         cy, cx = height // 2, width // 2
 
+        # Aspect-ratio-preserving rectangle:
+        # scale H, W independently by sqrt(coverage). This keeps the
+        # mask centered with the same aspect as the target image, and
+        # the resulting area / total area equals `coverage` (up to
+        # integer-rounding bias on tiny images).
+        scale = float(np.sqrt(self._coverage))
+        rect_h = int(round(height * scale))
+        rect_w = int(round(width * scale))
+        half_h = rect_h // 2
+        half_w = rect_w // 2
+
         mask = np.zeros((height, width), dtype=np.uint8)
-        if half > 0:
-            mask[cy - half:cy + half, cx - half:cx + half] = 255
+        if half_h > 0 and half_w > 0:
+            mask[cy - half_h:cy + half_h, cx - half_w:cx + half_w] = 255
 
         result = InferResult(
             target=target,
@@ -96,3 +106,9 @@ class MockBackend(BackendInterface):
                 raise ValueError(
                     f"masks[{i}] must be (H, W) uint8, "
                     f"got shape={ref_mask.shape} dtype={ref_mask.dtype}")
+            if ref.shape[:2] != ref_mask.shape:
+                raise ValueError(
+                    f"refs[{i}] and masks[{i}] must share H, W "
+                    f"(image-mask pair alignment) - "
+                    f"refs[{i}] HxW={ref.shape[:2]} vs "
+                    f"masks[{i}] HxW={ref_mask.shape}")
