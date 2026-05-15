@@ -208,3 +208,68 @@ def test_output_target_dtype_shape_unchanged():
     assert target.dtype == orig_dtype
     assert target.shape == orig_shape
     assert target.sum() == orig_sum, "backend mutated target buffer"
+
+
+# ─────────────────────────── Boundary / geometry ────────────────────────
+
+
+def test_mask_coverage_zero_produces_all_zero_mask():
+    """mask_coverage=0.0 returns a mask with no positive pixels."""
+    result = MockBackend(mask_coverage=0.0).infer(_rgb(100, 100), [], [])
+    assert (result.masks[0] == 255).sum() == 0
+
+
+def test_mask_coverage_one_fills_image():
+    """mask_coverage=1.0 returns a near-fully-filled mask (>=95%)."""
+    result = MockBackend(mask_coverage=1.0).infer(_rgb(100, 100), [], [])
+    coverage = (result.masks[0] == 255).sum() / result.masks[0].size
+    assert coverage >= 0.95, f"coverage=1.0 produced only {coverage:.2%}"
+
+
+def test_mask_coverage_nonsquare_target():
+    """Coverage must match parameter even for non-square target (e.g. 800x600)."""
+    target = _rgb(600, 800)
+    result = MockBackend(mask_coverage=0.25).infer(target, [], [])
+    coverage = (result.masks[0] == 255).sum() / result.masks[0].size
+    assert 0.20 <= coverage <= 0.30, \
+        f"non-square 800x600 coverage=0.25 produced {coverage:.2%}"
+
+
+# ─────────────────────────── structlog emit ───────────────────────────
+
+
+def test_log_emits_infer_started_with_attributes():
+    """backend_infer_started event carries n_refs, target_shape, backend."""
+    import structlog
+    with structlog.testing.capture_logs() as logs:
+        MockBackend().infer(_rgb(30, 40), [], [])
+    started = [e for e in logs if e["event"] == "backend_infer_started"]
+    assert len(started) == 1, f"expected 1 started event, got {len(started)}"
+    e = started[0]
+    assert e["n_refs"] == 0
+    assert e["target_shape"] == [30, 40, 3]
+    assert e["backend"] == "mock"
+
+
+def test_log_emits_infer_completed_with_attributes():
+    """backend_infer_completed event carries n_masks, backend."""
+    import structlog
+    with structlog.testing.capture_logs() as logs:
+        MockBackend().infer(_rgb(20, 20), [], [])
+    completed = [e for e in logs if e["event"] == "backend_infer_completed"]
+    assert len(completed) == 1
+    e = completed[0]
+    assert e["n_masks"] == 1
+    assert e["backend"] == "mock"
+
+
+def test_log_skips_emission_on_validation_failure():
+    """When _validate raises, no backend_infer_started/completed event is emitted."""
+    import structlog
+    backend = MockBackend()
+    with structlog.testing.capture_logs() as logs:
+        with pytest.raises(ValueError):
+            backend.infer(_gray(20, 20), [], [])  # grayscale target — invalid
+    events = [e["event"] for e in logs]
+    assert "backend_infer_started" not in events
+    assert "backend_infer_completed" not in events
