@@ -2,6 +2,7 @@
 import numpy as np
 import pytest
 
+from sam_manager.backend import InferResult
 from sam_manager.backends.mock import MockBackend
 
 
@@ -154,3 +155,56 @@ def test_validation_masks_pseudo_3d():
     pseudo_mask = np.zeros((20, 20, 1), dtype=np.uint8)
     with pytest.raises(ValueError):
         backend.infer(target, [_rgb(20, 20)], [pseudo_mask])
+
+
+# ─────────────────────────── Output validation ───────────────────────────
+
+
+def test_output_is_inferresult_instance():
+    """Return type must be InferResult (not raw dict / tuple)."""
+    result = MockBackend().infer(_rgb(20, 20), [], [])
+    assert isinstance(result, InferResult)
+
+
+def test_output_mask_dtype_is_uint8():
+    """result.masks[0] dtype must be uint8 — downstream Layer 5 assumes uint8."""
+    result = MockBackend().infer(_rgb(40, 40), [], [])
+    assert result.masks[0].dtype == np.uint8
+
+
+def test_output_mask_values_only_zero_or_255():
+    """result.masks[0] is binary (only 0 / 255), no gradient values."""
+    result = MockBackend(mask_coverage=0.4).infer(_rgb(80, 80), [], [])
+    unique = set(np.unique(result.masks[0]).tolist())
+    assert unique.issubset({0, 255}), f"non-binary values: {unique}"
+
+
+def test_output_mask_geometry_is_centered():
+    """Mask rectangle is centered: center pixel == 255, four corners == 0."""
+    target = _rgb(100, 100)
+    result = MockBackend(mask_coverage=0.25).infer(target, [], [])
+    mask = result.masks[0]
+    h, w = mask.shape
+    assert mask[h // 2, w // 2] == 255, "center pixel not set"
+    assert mask[0, 0] == 0, "top-left corner unexpectedly set"
+    assert mask[0, w - 1] == 0, "top-right corner unexpectedly set"
+    assert mask[h - 1, 0] == 0, "bottom-left corner unexpectedly set"
+    assert mask[h - 1, w - 1] == 0, "bottom-right corner unexpectedly set"
+
+
+def test_output_class_ids_exactly_zero():
+    """class_ids must be [0] exactly — single class, id 0."""
+    result = MockBackend().infer(_rgb(20, 20), [], [])
+    assert result.class_ids == [0]
+
+
+def test_output_target_dtype_shape_unchanged():
+    """Backend must not mutate caller's target — dtype + shape preserved."""
+    target = _rgb(50, 70)
+    orig_dtype = target.dtype
+    orig_shape = target.shape
+    orig_sum = target.sum()
+    MockBackend().infer(target, [], [])
+    assert target.dtype == orig_dtype
+    assert target.shape == orig_shape
+    assert target.sum() == orig_sum, "backend mutated target buffer"
