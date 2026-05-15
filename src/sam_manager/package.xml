@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>sam_manager</name>
+  <version>0.0.0</version>
+  <description>
+    sam_manager — promptable segmentation orchestration node. This package
+    holds Layer 4 (BackendInterface abstraction + MockBackend) only.
+    Concrete backends (SegGPT, VRP-SAM, ...) plug in by inheriting
+    BackendInterface. Downstream Layer 1/2/5 (ROS 2 handler, queue,
+    ConfidenceGate) land in follow-up PRs.
+  </description>
+  <maintainer email="ycpss91255@gmail.com">cyc</maintainer>
+  <license>Apache-2.0</license>
+
+  <exec_depend>python3-numpy</exec_depend>
+  <!--
+    structlog is installed via pip (declared in setup.py install_requires)
+    rather than rosdep, because rosdep on Ubuntu 22.04 does not have a
+    `python3-structlog` mapping. The Layer 1 PR will revisit this once
+    docker scaffold lands (where pip can be invoked at image-build time).
+  -->
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

@@ -32,12 +32,22 @@ jobs:
           rosdep update --rosdistro humble
           rosdep install --from-paths src --ignore-src -r -y
 
-      - name: colcon build sam_manager_msgs
+      - name: Install pip deps not in rosdep (structlog)
+        shell: bash
+        run: |
+          # ros:humble-ros-base ships without pip; install it first.
+          # structlog has no `python3-structlog` rosdep mapping on
+          # Ubuntu 22.04 so we install via pip until the Layer 1
+          # docker scaffold can bake it into the image.
+          apt-get install -y --no-install-recommends python3-pip
+          python3 -m pip install structlog
+
+      - name: colcon build sam_manager_msgs + sam_manager
         shell: bash
         run: |
           . /opt/ros/humble/setup.bash
           colcon build \
-            --packages-select sam_manager_msgs \
+            --packages-select sam_manager_msgs sam_manager \
             --event-handlers console_direct+
 
       - name: ros2 interface show (smoke)
@@ -47,3 +57,13 @@ jobs:
           . install/setup.bash
           ros2 interface show sam_manager_msgs/srv/SegmentFromReference
           ros2 interface show sam_manager_msgs/msg/MaskRLE
+
+      - name: colcon test sam_manager
+        shell: bash
+        run: |
+          . /opt/ros/humble/setup.bash
+          . install/setup.bash
+          colcon test \
+            --packages-select sam_manager \
+            --event-handlers console_direct+
+          colcon test-result --verbose
