@@ -17,7 +17,7 @@ setup(
     maintainer_email='ycpss91255@gmail.com',
     description='sam_manager Layer 4 — BackendInterface + MockBackend.',
     license='Apache-2.0',
-    extras_require={'test': ['pytest']},
+    extras_require={'test': ['pytest', 'pytest-cov']},
     entry_points={
         'console_scripts': [],
     },

@@ -26,6 +26,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Structured logging via `structlog` with OTel-aligned event names (`backend_infer_started`, `backend_infer_completed`). The full structlog pipeline configuration (JSON renderer / sinks / trace_id binding) lands in the Layer 1 PR; this PR just emits the events through the default logger.
 - pytest test suite (`test/test_backend.py` 5 cases + `test/test_mock.py` 11 cases) + ament_copyright / ament_flake8 / ament_pep257 lint stubs (the copyright stub is `@pytest.mark.skip`'d, mirroring `core_sam_bridge` until a per-file header policy is decided).
 
+### Added (Layer 4 backfill — strict TDD, this PR)
+
+- `sam_manager/error_handler.py` — `BackendError` (status_code=11 class constant) + `ErrorHandlingBackend(BackendInterface)` decorator. Per CLAUDE.md / `ros2-msg-design` SKILL.md status_code emit table, Layer 4 ErrorHandler maps backend runtime failures (GPU OOM, CUDA error, model load) to wire `status_code 11 BACKEND_ERROR`. `ValueError` from inner backend propagates unchanged so the upstream caller (Layer 1 RequestValidator) emits the appropriate code from 3 / 4 / 6 / 7 / 8. Implementation: Decorator pattern around `BackendInterface`; `warmup()` + `health_check()` forward to inner; emits `backend_infer_failed` structlog event before re-raising. 11 unit tests.
+- `MockBackend._validate` now asserts **pair alignment** — `refs[i].shape[:2] == masks[i].shape` — mirroring the seggpt Layer 2 contract and catching mismatched (image, mask) pairs that previously slipped through. Mirrors the kind of validation we want SegGPTBackend to inherit when it lands.
+- `MockBackend` geometry is now aspect-ratio-preserving: previously `min(H, W)` was used for both rectangle sides, biasing non-square targets (800×600 with `coverage=0.25` produced 18.75%). The new formula scales `H` and `W` independently by `sqrt(coverage)`, so coverage matches the parameter regardless of aspect ratio. Square targets unaffected.
+- Test suite expanded to 47 unit cases (was 19) with 100% line coverage across `backend.py` + `backends/mock.py` + `error_handler.py`:
+  - `test_mock.py` 11 → 29 cases: input validation (pair alignment + RGBA + pseudo-3D + dtype variants), output invariants (`InferResult` instance, mask dtype, binary-values-only, centered geometry, exact class_ids, target buffer untouched), boundary geometry (coverage 0.0 / 1.0 / non-square), structlog OTel emit (events + attributes + no emit on early raise).
+  - `test_backend.py` 5 → 7 cases: ABC override of `warmup()` / `health_check()`.
+  - `test_error_handler.py` NEW 11 cases.
+- `.github/workflows/main.yaml` gains `pytest coverage (>= 80%)` step running `pytest --cov=sam_manager --cov-report=term-missing --cov-fail-under=80`. CI installs `pytest-cov` via pip alongside structlog.
+- `doc/test/TEST.md` — single source of truth for test counts + 4-category coverage table (Smoke / Unit / Integration / Lint per CLAUDE.md「TDD 測試分類」).
+- `setup.py` `extras_require['test']` adds `pytest-cov`.
+
 ### Added (CI)
 
 - `.github/workflows/main.yaml` — single `build` job runs `colcon build --packages-select sam_manager_msgs` inside `ros:humble-ros-base` on `ubuntu-latest`, then `ros2 interface show` smoke-checks `srv/SegmentFromReference` and `msg/MaskRLE`. Job name `build` is kept stable so `main` branch protection can require it by name (added via `gh api PATCH .../branches/main/protection` after the workflow's first green run). Workflow triggers on push to `main`, tag push (`v*`), pull requests, and manual dispatch.
