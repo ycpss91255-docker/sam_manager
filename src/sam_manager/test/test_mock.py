@@ -102,3 +102,55 @@ def test_validation_masks_must_be_2d_uint8():
     backend = MockBackend()
     with pytest.raises(ValueError):
         backend.infer(target, [_rgb(20, 20)], [_rgb(20, 20)])  # 3-channel mask
+
+
+def test_validation_pair_alignment():
+    """refs[i] and masks[i] must share H, W (image-mask pair alignment)."""
+    target = _rgb(20, 20)
+    backend = MockBackend()
+    # ref is 100x100 but mask is 50x50 — mismatched pair, must raise
+    with pytest.raises(ValueError, match="(?i)align|mismatch|shape"):
+        backend.infer(target, [_rgb(100, 100)], [_gray(50, 50)])
+
+
+def test_validation_target_rgba_four_channels():
+    """target with 4 channels (RGBA) must raise — only RGB accepted."""
+    rgba = np.zeros((40, 40, 4), dtype=np.uint8)
+    backend = MockBackend()
+    with pytest.raises(ValueError):
+        backend.infer(rgba, [], [])
+
+
+def test_validation_target_single_channel_pseudo_3d():
+    """target with shape (H, W, 1) must raise — pseudo 3D not allowed."""
+    pseudo = np.zeros((40, 40, 1), dtype=np.uint8)
+    backend = MockBackend()
+    with pytest.raises(ValueError):
+        backend.infer(pseudo, [], [])
+
+
+def test_validation_refs_dtype_non_uint8():
+    """refs[i] with non-uint8 dtype (e.g. uint16) must raise."""
+    target = _rgb(20, 20)
+    backend = MockBackend()
+    bad_ref = np.zeros((20, 20, 3), dtype=np.uint16)
+    with pytest.raises(ValueError):
+        backend.infer(target, [bad_ref], [_gray(20, 20)])
+
+
+def test_validation_masks_dtype_bool():
+    """masks[i] with bool dtype must raise — accept only uint8 binary."""
+    target = _rgb(20, 20)
+    backend = MockBackend()
+    bool_mask = np.zeros((20, 20), dtype=bool)
+    with pytest.raises(ValueError):
+        backend.infer(target, [_rgb(20, 20)], [bool_mask])
+
+
+def test_validation_masks_pseudo_3d():
+    """masks[i] with shape (H, W, 1) must raise — must be true 2D."""
+    target = _rgb(20, 20)
+    backend = MockBackend()
+    pseudo_mask = np.zeros((20, 20, 1), dtype=np.uint8)
+    with pytest.raises(ValueError):
+        backend.infer(target, [_rgb(20, 20)], [pseudo_mask])

@@ -96,3 +96,9 @@ class MockBackend(BackendInterface):
                 raise ValueError(
                     f"masks[{i}] must be (H, W) uint8, "
                     f"got shape={ref_mask.shape} dtype={ref_mask.dtype}")
+            if ref.shape[:2] != ref_mask.shape:
+                raise ValueError(
+                    f"refs[{i}] and masks[{i}] must share H, W "
+                    f"(image-mask pair alignment) - "
+                    f"refs[{i}] HxW={ref.shape[:2]} vs "
+                    f"masks[{i}] HxW={ref_mask.shape}")
