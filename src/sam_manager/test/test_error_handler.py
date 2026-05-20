@@ -80,6 +80,51 @@ def test_value_error_propagates_unchanged():
         wrapped.infer(np.zeros((10, 10), dtype=np.uint8), [], [])
 
 
+# ─────────────────────────── Parametrized exception coverage ─────────
+#
+# These cases pull the BoomBackend class from the shared `boom_class`
+# pytest fixture (test/conftest.py) so test_error_handler does not
+# redefine an inner BoomBackend per exception type. Parametrization
+# also makes the seam between ErrorHandlingBackend and any concrete
+# raising backend explicit -- the wrapper must behave the same way
+# regardless of which non-ValueError exception the inner raises.
+
+
+@pytest.mark.parametrize("exc_type", [
+    RuntimeError,
+    KeyError,
+    OSError,
+    ZeroDivisionError,
+    ConnectionError,
+])
+def test_non_value_error_wrapped_as_backend_error(boom_class, exc_type):
+    """Any non-ValueError exception is wrapped with status_code 11."""
+    inner = boom_class(lambda: exc_type("boom"))
+    wrapped = ErrorHandlingBackend(inner)
+    with pytest.raises(BackendError) as excinfo:
+        wrapped.infer(_rgb(20, 20), [], [])
+    assert excinfo.value.status_code == 11
+    assert isinstance(excinfo.value.original, exc_type)
+
+
+@pytest.mark.parametrize("exc_type", [
+    RuntimeError,
+    KeyError,
+    OSError,
+    ZeroDivisionError,
+    ConnectionError,
+])
+def test_non_value_error_preserves_cause_chain(boom_class, exc_type):
+    """BackendError preserves the original via raise ... from exc."""
+    original = exc_type("specific message")
+    inner = boom_class(lambda: original)
+    wrapped = ErrorHandlingBackend(inner)
+    with pytest.raises(BackendError) as excinfo:
+        wrapped.infer(_rgb(20, 20), [], [])
+    assert excinfo.value.__cause__ is original
+    assert excinfo.value.original is original
+
+
 def test_backend_error_constant_is_eleven():
     """BackendError.STATUS_CODE class constant is 11 (BACKEND_ERROR per CLAUDE.md)."""
     assert BackendError.STATUS_CODE == 11
