@@ -21,9 +21,9 @@ from typing import List
 import numpy as np
 import structlog
 
-from sam_manager.backend import BackendInterface, InferResult
+from sam_manager.core.backend import BackendInterface, InferResult
 
-_logger = structlog.get_logger("sam_manager.error_handler")
+_logger = structlog.get_logger("sam_manager.core.error_handler")
 
 
 class BackendError(Exception):

@@ -2,8 +2,8 @@
 import numpy as np
 import pytest
 
-from sam_manager.backend import InferResult
-from sam_manager.backends.mock import MockBackend
+from sam_manager.core.backend import InferResult
+from sam_manager.core.backends.mock import MockBackend
 
 
 def _rgb(h: int, w: int) -> np.ndarray:

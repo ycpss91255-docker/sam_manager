@@ -9,9 +9,9 @@ status_code (3 / 4 / 6 / 7 / 8) instead.
 import numpy as np
 import pytest
 
-from sam_manager.backend import BackendInterface, InferResult
-from sam_manager.backends.mock import MockBackend
-from sam_manager.error_handler import BackendError, ErrorHandlingBackend
+from sam_manager.core.backend import BackendInterface, InferResult
+from sam_manager.core.backends.mock import MockBackend
+from sam_manager.core.error_handler import BackendError, ErrorHandlingBackend
 
 
 def _rgb(h: int, w: int) -> np.ndarray:
