@@ -2,8 +2,8 @@
 import numpy as np
 import pytest
 
-from sam_manager.backend import BackendInterface, InferResult
-from sam_manager.backends.mock import MockBackend
+from sam_manager.core.backend import BackendInterface, InferResult
+from sam_manager.core.backends.mock import MockBackend
 
 
 def test_abc_cannot_instantiate_directly():

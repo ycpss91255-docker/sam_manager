@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (Layer 1 — RequestValidator)
+
+- `sam_manager/core/request_validator.py` — `validate_target(target)` module-level function + `InvalidImageError(ValueError)` exception with `STATUS_CODE = 3`. Per architecture v4 §4 + drawio Page 4 status_code emit table, Layer 1 RequestValidator owns status_code 3 INVALID_IMAGE: rejects target images that fail the (H, W, 3) uint8 RGB non-empty contract. ROS-agnostic core — the 4 Frontend Adapters (ROS 2 Service / Topic / FastAPI / Python API) will all call `validate_target` and map `InvalidImageError` to their wire representation. `InvalidImageError` subclasses `ValueError` so the Layer 4 `ErrorHandlingBackend` `except ValueError: raise` branch propagates it unchanged rather than remapping to status_code 11 BACKEND_ERROR.
+- `MockBackend._validate` now delegates target shape / dtype / non-empty checks to `validate_target`. Refs / masks pair-alignment + count checks remain in MockBackend pending the Layer 3 PromptStore PR that owns status 6 / 7 emit.
+- `test/test_request_validator.py` — 18 unit cases covering: STATUS_CODE / ValueError subclass / message carriage; happy path (valid RGB uint8 + 1×1 edge case); shape rejection (2D grayscale, RGBA, pseudo-3D single channel, 1D, 4D); dtype rejection (float32, uint16, bool); empty rejection (zero height / width / both); error diagnostics (shape + dtype surfaced in message).
+
+### Changed (Layer 4 — ROS-agnostic core seam)
+
+- Moved Layer 4 backend modules into a `core/` subpackage to establish the ROS-agnostic seam ahead of Frontend Adapter PRs (ROS 2 Service handler / FastAPI handler will live in `sam_manager.adapters.<frontend>`, not in `core/`):
+  - `sam_manager.backend` → `sam_manager.core.backend`
+  - `sam_manager.error_handler` → `sam_manager.core.error_handler`
+  - `sam_manager.backends.mock` → `sam_manager.core.backends.mock`
+  - structlog logger names updated to match new paths (`sam_manager.core.error_handler`, `sam_manager.core.backends.mock`).
+- Pure refactor — no public behavior change beyond the import-path rename.
+
 ### Added
 
 - Initial repository scaffold: `README.md` (English) + `doc/README.{zh-TW,zh-CN,ja}.md` (4-language sync), `LICENSE` (Apache-2.0, aligned with `ycpss91255-docker/base`), `.gitignore`, and this `CHANGELOG.md`.
