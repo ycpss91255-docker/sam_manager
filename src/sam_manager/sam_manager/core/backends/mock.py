@@ -10,6 +10,7 @@ import numpy as np
 import structlog
 
 from sam_manager.core.backend import BackendInterface, InferResult
+from sam_manager.core.request_validator import validate_target
 
 _logger = structlog.get_logger("sam_manager.core.backends.mock")
 
@@ -87,13 +88,14 @@ class MockBackend(BackendInterface):
         refs: List[np.ndarray],
         masks: List[np.ndarray],
     ) -> None:
-        """Raise ValueError on malformed input; mirrors seggpt Layer 2 contract."""
-        if target.ndim != 3 or target.shape[2] != 3 or target.dtype != np.uint8:
-            raise ValueError(
-                "target must be (H, W, 3) uint8, "
-                f"got shape={target.shape} dtype={target.dtype}")
-        if target.size == 0:
-            raise ValueError("target must not be empty")
+        """Validate request inputs.
+
+        Target shape / dtype / non-empty (status 3 INVALID_IMAGE)
+        delegates to Layer 1 ``validate_target``. Refs / masks
+        pair-alignment + count checks (status 6 / 7) remain here
+        until Layer 3 PromptStore PR lifts them out.
+        """
+        validate_target(target)
         if len(refs) != len(masks):
             raise ValueError(
                 f"refs ({len(refs)}) and masks ({len(masks)}) length mismatch")
