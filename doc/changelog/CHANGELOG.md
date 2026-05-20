@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (Layer 4 test infra — boom_class fixture)
+
+- `test/conftest.py` (NEW) exposes a `boom_class` pytest fixture returning a deterministic error-raising `BackendInterface`. Promotes the previously-inline `class BoomBackend(MockBackend)` definitions in `test_error_handler.py` to a shared fixture so adding a new exception type to the wrapper coverage matrix no longer requires redefining the backend per case.
+- `test_error_handler.py` parametrizes non-ValueError exception coverage across `RuntimeError / KeyError / OSError / ZeroDivisionError / ConnectionError` (5 types x 2 invariants = 10 pytest instances). Two prior inline-class single-case tests (`test_runtime_error_wrapped_as_backend_error`, `test_generic_exception_wrapped_as_backend_error`) deleted — fully subsumed. Message preservation + original-instance invariants stay covered by the surrounding `BackendError` constant / state tests.
+- Net: ErrorHandlingBackend Decorator seam moves from a 2-case spot-check to a 5-type matrix while shrinking the test module (`-20` lines after the fixture migration).
+
 ### Added (Layer 1 — RequestValidator)
 
 - `sam_manager/core/request_validator.py` — `validate_target(target)` module-level function + `InvalidImageError(ValueError)` exception with `STATUS_CODE = 3`. Per architecture v4 §4 + drawio Page 4 status_code emit table, Layer 1 RequestValidator owns status_code 3 INVALID_IMAGE: rejects target images that fail the (H, W, 3) uint8 RGB non-empty contract. ROS-agnostic core — the 4 Frontend Adapters (ROS 2 Service / Topic / FastAPI / Python API) will all call `validate_target` and map `InvalidImageError` to their wire representation. `InvalidImageError` subclasses `ValueError` so the Layer 4 `ErrorHandlingBackend` `except ValueError: raise` branch propagates it unchanged rather than remapping to status_code 11 BACKEND_ERROR.

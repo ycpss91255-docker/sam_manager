@@ -22,9 +22,12 @@ docker run --rm -v "$(pwd):/work" -w /work ros:humble-ros-base bash -c '
 '
 ```
 
-Total: **65 unit tests** + 1 skipped (`test_copyright` — opt-in once
+Total: **73 unit tests** + 1 skipped (`test_copyright` — opt-in once
 a per-file header policy is decided) plus `ament_flake8` and
-`ament_pep257` (both run via `colcon test`).
+`ament_pep257` (both run via `colcon test`). `73` counts the
+parametrized instances pytest collects from `test_error_handler.py`
+(2 parametrize decorators x 5 exception types = 10, plus 9 single
+cases = 19 collected instances).
 
 Line coverage: **100%** at this revision; CI gate is **80%** so the
 remaining layers (2, 3, 5) can be added without immediately tightening
@@ -154,21 +157,27 @@ Error diagnostics:
 | `test_error_message_mentions_shape` | Shape surfaced in error message |
 | `test_error_message_mentions_dtype` | dtype surfaced in error message |
 
-### test/test_error_handler.py (11)
+### test/test_error_handler.py (19 collected = 9 single + 2 parametrized x 5)
 
 | Test | What |
 |------|------|
 | `test_wraps_successful_infer` | Happy path passthrough |
 | `test_subclasses_backend_interface` | `issubclass(ErrorHandlingBackend, BackendInterface)` |
 | `test_polymorphism_via_base_type` | Caller holds wrapped through ABC |
-| `test_runtime_error_wrapped_as_backend_error` | RuntimeError → BackendError(11) |
-| `test_generic_exception_wrapped_as_backend_error` | KeyError → BackendError(11) |
+| `test_non_value_error_wrapped_as_backend_error` x 5 | Any non-ValueError -> BackendError(11), parametrized over RuntimeError / KeyError / OSError / ZeroDivisionError / ConnectionError |
+| `test_non_value_error_preserves_cause_chain` x 5 | `BackendError.__cause__ is original`, parametrized over same 5 exception types |
 | `test_value_error_propagates_unchanged` | ValueError NOT wrapped |
 | `test_backend_error_constant_is_eleven` | `BackendError.STATUS_CODE == 11` |
 | `test_backend_error_holds_original_exception` | `BackendError.original` is original ex |
 | `test_backend_error_str_includes_original_type_and_message` | str surfaces type + msg |
 | `test_warmup_delegates_to_inner` | warmup forwards |
 | `test_health_check_delegates_to_inner` | health_check forwards |
+
+### test/conftest.py (0 tests — shared fixtures only)
+
+| Fixture | What |
+|---------|------|
+| `boom_class` | Returns a `BackendInterface` subclass taking `exc_factory` callable; lets tests build error-raising backends without per-case inline class definitions |
 
 ### test/test_copyright.py (1, skipped)
 
