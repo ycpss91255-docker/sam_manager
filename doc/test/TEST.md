@@ -22,12 +22,13 @@ docker run --rm -v "$(pwd):/work" -w /work ros:humble-ros-base bash -c '
 '
 ```
 
-Total: **47 unit tests** + 1 skipped (`test_copyright` — opt-in once
+Total: **65 unit tests** + 1 skipped (`test_copyright` — opt-in once
 a per-file header policy is decided) plus `ament_flake8` and
 `ament_pep257` (both run via `colcon test`).
 
-Line coverage: **100%** at this revision; CI gate is **80%** so layers
-1-3, 5 can be added without immediately tightening the bar.
+Line coverage: **100%** at this revision; CI gate is **80%** so the
+remaining layers (2, 3, 5) can be added without immediately tightening
+the bar.
 
 ## 4-category coverage
 
@@ -36,7 +37,7 @@ Per CLAUDE.md「TDD 測試分類（4 個面向）」:
 | # | Category | Where | What it covers |
 |---|----------|-------|----------------|
 | 1 | Smoke | `test/test_*.py` (any) | Package + module import + ABC instantiability + `colcon build` success |
-| 2 | Unit | `test/test_backend.py` / `test/test_mock.py` / `test/test_error_handler.py` | BackendInterface ABC, MockBackend behaviour, ErrorHandling decorator |
+| 2 | Unit | `test/test_backend.py` / `test/test_mock.py` / `test/test_error_handler.py` / `test/test_request_validator.py` | BackendInterface ABC, MockBackend behaviour, ErrorHandling decorator, Layer 1 target validator |
 | 3 | Integration | (placeholder — added when Layer 5 ConfidenceGate or Layer 1 ROS 2 handler lands and we have cross-layer flows to test) | TBD |
 | 4 | Lint | `test/test_flake8.py` + `test/test_pep257.py` + `test/test_copyright.py` (skipped) | flake8 (ament default) + pep257 with Google-style ignores |
 
@@ -108,6 +109,50 @@ structlog emit:
 | `test_log_emits_infer_started_with_attributes` | `backend_infer_started` + n_refs / target_shape / backend attrs |
 | `test_log_emits_infer_completed_with_attributes` | `backend_infer_completed` + n_masks / backend attrs |
 | `test_log_skips_emission_on_validation_failure` | No emit when `_validate` raises |
+
+### test/test_request_validator.py (18)
+
+Exception contract:
+| Test | What |
+|------|------|
+| `test_invalid_image_error_status_code_is_three` | `InvalidImageError.STATUS_CODE == 3` |
+| `test_invalid_image_error_subclasses_value_error` | IS-A ValueError so Layer 4 wrapper propagates unchanged |
+| `test_invalid_image_error_carries_message` | Raised instance preserves diagnostic message |
+
+Happy path:
+| Test | What |
+|------|------|
+| `test_accepts_valid_rgb_uint8` | `(H, W, 3)` uint8 returns None |
+| `test_accepts_minimum_size_one_by_one` | 1×1 RGB image is valid |
+
+Shape rejection:
+| Test | What |
+|------|------|
+| `test_rejects_2d_grayscale` | `(H, W)` raises |
+| `test_rejects_rgba_four_channels` | `(H, W, 4)` raises |
+| `test_rejects_pseudo_3d_single_channel` | `(H, W, 1)` raises |
+| `test_rejects_ndim_one` | 1D flat array raises |
+| `test_rejects_ndim_four` | 4D batched array raises |
+
+dtype rejection:
+| Test | What |
+|------|------|
+| `test_rejects_float32_dtype` | float32 raises |
+| `test_rejects_uint16_dtype` | uint16 raises |
+| `test_rejects_bool_dtype` | bool raises |
+
+Empty rejection:
+| Test | What |
+|------|------|
+| `test_rejects_empty_zero_height` | `(0, W, 3)` raises |
+| `test_rejects_empty_zero_width` | `(H, 0, 3)` raises |
+| `test_rejects_empty_zero_by_zero` | `(0, 0, 3)` raises |
+
+Error diagnostics:
+| Test | What |
+|------|------|
+| `test_error_message_mentions_shape` | Shape surfaced in error message |
+| `test_error_message_mentions_dtype` | dtype surfaced in error message |
 
 ### test/test_error_handler.py (11)
 
