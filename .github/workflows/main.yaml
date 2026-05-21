@@ -75,12 +75,26 @@ jobs:
           # coverage. Re-run pytest with --cov against the installed
           # sam_manager module to enforce the line-coverage threshold
           # and surface a term-missing report in the CI log.
+          #
+          # Use the test/ directory so new test files (each new layer
+          # or adapter PR adds at least one) are auto-discovered.
+          # Earlier explicit-file lists silently missed new tests:
+          # PR #4 + #6 hit threshold only because Mock used to import
+          # the new validators on its happy path, which loaded those
+          # modules for coverage by accident. Mock retiring
+          # self-validation broke that bridge and surfaced the gap.
           . /opt/ros/humble/setup.bash
           . install/setup.bash
+          # --ignore the ament lint stubs: colcon test (above) already
+          # runs ament_flake8 / ament_pep257 / ament_copyright with
+          # the correct cwd inside build/. Re-running them here from
+          # the repo root makes flake8 walk install/ autogen files
+          # and false-fail.
           python3 -m pytest \
-            src/sam_manager/test/test_backend.py \
-            src/sam_manager/test/test_mock.py \
-            src/sam_manager/test/test_error_handler.py \
+            src/sam_manager/test/ \
+            --ignore=src/sam_manager/test/test_flake8.py \
+            --ignore=src/sam_manager/test/test_pep257.py \
+            --ignore=src/sam_manager/test/test_copyright.py \
             --cov=sam_manager \
             --cov-report=term-missing \
             --cov-report=xml \
