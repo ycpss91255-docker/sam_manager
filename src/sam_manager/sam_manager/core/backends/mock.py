@@ -10,6 +10,7 @@ import numpy as np
 import structlog
 
 from sam_manager.core.backend import BackendInterface, InferResult
+from sam_manager.core.prompt_store import validate_references
 from sam_manager.core.request_validator import validate_target
 
 _logger = structlog.get_logger("sam_manager.core.backends.mock")
@@ -88,29 +89,18 @@ class MockBackend(BackendInterface):
         refs: List[np.ndarray],
         masks: List[np.ndarray],
     ) -> None:
-        """Validate request inputs.
+        """Validate request inputs via Layer 1 + Layer 3 helpers.
 
         Target shape / dtype / non-empty (status 3 INVALID_IMAGE)
-        delegates to Layer 1 ``validate_target``. Refs / masks
-        pair-alignment + count checks (status 6 / 7) remain here
-        until Layer 3 PromptStore PR lifts them out.
+        delegates to Layer 1 ``validate_target``. Reference count
+        (status 7) + per-pair shape / dtype / pair alignment
+        (status 6) delegate to Layer 3 ``validate_references``.
+
+        Once Frontend Adapter (ROS 2 srv handler / FastAPI handler)
+        lands, this Mock-internal validation becomes redundant -- the
+        adapter will call Layer 1 + Layer 3 before forwarding to
+        ``infer()``. Kept here so MockBackend is self-contained for
+        downstream unit tests in the meantime.
         """
         validate_target(target)
-        if len(refs) != len(masks):
-            raise ValueError(
-                f"refs ({len(refs)}) and masks ({len(masks)}) length mismatch")
-        for i, (ref, ref_mask) in enumerate(zip(refs, masks)):
-            if ref.ndim != 3 or ref.shape[2] != 3 or ref.dtype != np.uint8:
-                raise ValueError(
-                    f"refs[{i}] must be (H, W, 3) uint8, "
-                    f"got shape={ref.shape} dtype={ref.dtype}")
-            if ref_mask.ndim != 2 or ref_mask.dtype != np.uint8:
-                raise ValueError(
-                    f"masks[{i}] must be (H, W) uint8, "
-                    f"got shape={ref_mask.shape} dtype={ref_mask.dtype}")
-            if ref.shape[:2] != ref_mask.shape:
-                raise ValueError(
-                    f"refs[{i}] and masks[{i}] must share H, W "
-                    f"(image-mask pair alignment) - "
-                    f"refs[{i}] HxW={ref.shape[:2]} vs "
-                    f"masks[{i}] HxW={ref_mask.shape}")
+        validate_references(refs, masks)
