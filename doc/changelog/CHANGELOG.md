@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (Layer 3 — PromptStore validators)
+
+- `sam_manager/core/prompt_store.py` (NEW) — module-level `validate_references(refs, masks)` + typed exceptions `ReferenceCountMismatchError(STATUS_CODE = 7)` and `ReferenceSizeMismatchError(STATUS_CODE = 6)`. Per architecture v4 §4 + drawio Page 4, Layer 3 PromptStore emits status 6 REFERENCE_SIZE_MISMATCH (refs / masks shape / dtype / pair alignment) and status 7 REFERENCE_COUNT_MISMATCH (`len(refs) != len(masks)`). Both exceptions subclass `ValueError` so Layer 4 `ErrorHandlingBackend` propagates them unchanged (mirroring `InvalidImageError` pattern).
+- `MockBackend._validate` now reduces to two delegation calls — `validate_target(target)` (Layer 1) + `validate_references(refs, masks)` (Layer 3). Inline refs/masks shape/dtype/pair-alignment loop deleted (was ~15 lines). Future SegGPTBackend wrapper does not need to re-implement the same checks.
+- `test/test_prompt_store.py` (NEW) — 26 unit cases covering exception contracts (STATUS_CODE / ValueError subclass), happy path (empty / single / multi-pair), count mismatch (status 7), ref shape+dtype rejection, mask shape+dtype rejection, pair alignment, iteration order (first-bad-wins; count check before per-pair). `status 5 PROMPT_NOT_FOUND` deferred until the full PromptStore class lands with named / inline mode lookup.
+
 ### Changed (Layer 4 test infra — boom_class fixture)
 
 - `test/conftest.py` (NEW) exposes a `boom_class` pytest fixture returning a deterministic error-raising `BackendInterface`. Promotes the previously-inline `class BoomBackend(MockBackend)` definitions in `test_error_handler.py` to a shared fixture so adding a new exception type to the wrapper coverage matrix no longer requires redefining the backend per case.

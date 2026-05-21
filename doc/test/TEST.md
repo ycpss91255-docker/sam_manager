@@ -22,15 +22,16 @@ docker run --rm -v "$(pwd):/work" -w /work ros:humble-ros-base bash -c '
 '
 ```
 
-Total: **73 unit tests** + 1 skipped (`test_copyright` — opt-in once
+Total: **99 unit tests** + 1 skipped (`test_copyright` — opt-in once
 a per-file header policy is decided) plus `ament_flake8` and
-`ament_pep257` (both run via `colcon test`). `73` counts the
+`ament_pep257` (both run via `colcon test`). `99` counts the
 parametrized instances pytest collects from `test_error_handler.py`
 (2 parametrize decorators x 5 exception types = 10, plus 9 single
-cases = 19 collected instances).
+cases = 19 collected instances) plus the 26 cases in
+`test_prompt_store.py`.
 
 Line coverage: **100%** at this revision; CI gate is **80%** so the
-remaining layers (2, 3, 5) can be added without immediately tightening
+remaining layers (2, 5) can be added without immediately tightening
 the bar.
 
 ## 4-category coverage
@@ -40,7 +41,7 @@ Per CLAUDE.md「TDD 測試分類（4 個面向）」:
 | # | Category | Where | What it covers |
 |---|----------|-------|----------------|
 | 1 | Smoke | `test/test_*.py` (any) | Package + module import + ABC instantiability + `colcon build` success |
-| 2 | Unit | `test/test_backend.py` / `test/test_mock.py` / `test/test_error_handler.py` / `test/test_request_validator.py` | BackendInterface ABC, MockBackend behaviour, ErrorHandling decorator, Layer 1 target validator |
+| 2 | Unit | `test/test_backend.py` / `test/test_mock.py` / `test/test_error_handler.py` / `test/test_request_validator.py` / `test/test_prompt_store.py` | BackendInterface ABC, MockBackend behaviour, ErrorHandling decorator, Layer 1 target validator, Layer 3 reference validators |
 | 3 | Integration | (placeholder — added when Layer 5 ConfidenceGate or Layer 1 ROS 2 handler lands and we have cross-layer flows to test) | TBD |
 | 4 | Lint | `test/test_flake8.py` + `test/test_pep257.py` + `test/test_copyright.py` (skipped) | flake8 (ament default) + pep257 with Google-style ignores |
 
@@ -156,6 +157,62 @@ Error diagnostics:
 |------|------|
 | `test_error_message_mentions_shape` | Shape surfaced in error message |
 | `test_error_message_mentions_dtype` | dtype surfaced in error message |
+
+### test/test_prompt_store.py (26)
+
+Exception contracts:
+| Test | What |
+|------|------|
+| `test_reference_count_mismatch_status_code_is_seven` | `STATUS_CODE == 7` |
+| `test_reference_size_mismatch_status_code_is_six` | `STATUS_CODE == 6` |
+| `test_count_mismatch_subclasses_value_error` | IS-A ValueError |
+| `test_size_mismatch_subclasses_value_error` | IS-A ValueError |
+
+Happy path:
+| Test | What |
+|------|------|
+| `test_accepts_empty_lists` | `validate_references([], [])` OK |
+| `test_accepts_single_aligned_pair` | 1 ref + 1 mask matching |
+| `test_accepts_multiple_aligned_pairs` | N pairs of varying sizes |
+
+Count mismatch (status 7):
+| Test | What |
+|------|------|
+| `test_rejects_more_refs_than_masks` | 1 ref + 0 masks |
+| `test_rejects_more_masks_than_refs` | 0 refs + 1 mask |
+| `test_rejects_off_by_one_count` | 2 refs + 3 masks |
+| `test_count_mismatch_message_mentions_both_lengths` | Diagnostic surfaces lengths |
+
+Ref shape + dtype (status 6):
+| Test | What |
+|------|------|
+| `test_rejects_grayscale_ref` | refs[i] (H, W) raises |
+| `test_rejects_rgba_ref` | refs[i] (H, W, 4) raises |
+| `test_rejects_pseudo_3d_ref` | refs[i] (H, W, 1) raises |
+| `test_rejects_uint16_ref` | refs[i] uint16 raises |
+| `test_rejects_float32_ref` | refs[i] float32 raises |
+
+Mask shape + dtype (status 6):
+| Test | What |
+|------|------|
+| `test_rejects_3channel_mask` | masks[i] (H, W, 3) raises |
+| `test_rejects_pseudo_3d_mask` | masks[i] (H, W, 1) raises |
+| `test_rejects_bool_mask` | masks[i] bool raises |
+| `test_rejects_float32_mask` | masks[i] float32 raises |
+
+Pair alignment (status 6):
+| Test | What |
+|------|------|
+| `test_rejects_pair_height_mismatch` | refs[i] H differs from masks[i] |
+| `test_rejects_pair_width_mismatch` | refs[i] W differs from masks[i] |
+| `test_rejects_pair_both_dim_mismatch` | Both dims differ |
+| `test_size_mismatch_message_identifies_index` | Diagnostic names the index |
+
+Iteration order:
+| Test | What |
+|------|------|
+| `test_first_bad_pair_raises_before_subsequent_bad_pairs` | First-bad-wins |
+| `test_count_mismatch_checked_before_pair_checks` | Count check has higher priority |
 
 ### test/test_error_handler.py (19 collected = 9 single + 2 parametrized x 5)
 
