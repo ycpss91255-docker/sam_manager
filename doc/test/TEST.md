@@ -22,13 +22,13 @@ docker run --rm -v "$(pwd):/work" -w /work ros:humble-ros-base bash -c '
 '
 ```
 
-Total: **99 unit tests** + 1 skipped (`test_copyright` — opt-in once
+Total: **100 unit tests** + 1 skipped (`test_copyright` — opt-in once
 a per-file header policy is decided) plus `ament_flake8` and
-`ament_pep257` (both run via `colcon test`). `99` counts the
-parametrized instances pytest collects from `test_error_handler.py`
-(2 parametrize decorators x 5 exception types = 10, plus 9 single
-cases = 19 collected instances) plus the 26 cases in
-`test_prompt_store.py`.
+`ament_pep257` (both run via `colcon test`). `100` includes
+`test_error_handler.py` parametrized expansion (19 collected) and
+the new `test/adapters/python/test_segment.py` (12); `test_mock.py`
+shrank from 29 -> 18 when MockBackend retired self-validation
+(coverage moved to Layer 1 / Layer 3 validators + adapter tests).
 
 Line coverage: **100%** at this revision; CI gate is **80%** so the
 remaining layers (2, 5) can be added without immediately tightening
@@ -42,7 +42,7 @@ Per CLAUDE.md「TDD 測試分類（4 個面向）」:
 |---|----------|-------|----------------|
 | 1 | Smoke | `test/test_*.py` (any) | Package + module import + ABC instantiability + `colcon build` success |
 | 2 | Unit | `test/test_backend.py` / `test/test_mock.py` / `test/test_error_handler.py` / `test/test_request_validator.py` / `test/test_prompt_store.py` | BackendInterface ABC, MockBackend behaviour, ErrorHandling decorator, Layer 1 target validator, Layer 3 reference validators |
-| 3 | Integration | (placeholder — added when Layer 5 ConfidenceGate or Layer 1 ROS 2 handler lands and we have cross-layer flows to test) | TBD |
+| 3 | Integration | `test/adapters/python/test_segment.py` — Frontend Adapter calls Layer 1 + Layer 3 validators then backend; exercises typed-exception propagation across layers | Python API adapter (first vertical slice); future ROS 2 / FastAPI adapter tests will join here |
 | 4 | Lint | `test/test_flake8.py` + `test/test_pep257.py` + `test/test_copyright.py` (skipped) | flake8 (ament default) + pep257 with Google-style ignores |
 
 ## Test inventory
@@ -59,7 +59,7 @@ Per CLAUDE.md「TDD 測試分類（4 個面向）」:
 | `test_subclass_can_override_warmup` | Subclass replacement of warmup fires |
 | `test_subclass_can_override_health_check_returning_false` | Subclass may report unhealthy |
 
-### test/test_mock.py (29)
+### test/test_mock.py (18)
 
 Constructor:
 | Test | What |
@@ -76,19 +76,10 @@ Happy-path output:
 | `test_determinism_same_input_same_output` | Two calls → byte-identical mask |
 | `test_telemetry_is_none_for_mock` | `latency_ms` / `gpu_mem_mb` are None |
 
-Input validation (ValueError on malformed input):
-| Test | What |
-|------|------|
-| `test_validation_target_must_be_rgb_uint8` | 2D / float32 / empty target |
-| `test_validation_refs_and_masks_length_mismatch` | `len(refs) != len(masks)` |
-| `test_validation_refs_must_be_rgb_uint8` | `refs[i]` 2D |
-| `test_validation_masks_must_be_2d_uint8` | `masks[i]` 3-channel |
-| `test_validation_pair_alignment` | `refs[i].shape[:2] != masks[i].shape` |
-| `test_validation_target_rgba_four_channels` | target 4-channel RGBA |
-| `test_validation_target_single_channel_pseudo_3d` | target (H, W, 1) |
-| `test_validation_refs_dtype_non_uint8` | `refs[i]` dtype uint16 |
-| `test_validation_masks_dtype_bool` | `masks[i]` dtype bool |
-| `test_validation_masks_pseudo_3d` | `masks[i]` (H, W, 1) |
+Input validation removed -- MockBackend no longer self-validates.
+Coverage moved to: `test/test_request_validator.py` (Layer 1) +
+`test/test_prompt_store.py` (Layer 3) +
+`test/adapters/python/test_segment.py` (realistic call path).
 
 Output invariants:
 | Test | What |
@@ -112,7 +103,6 @@ structlog emit:
 |------|------|
 | `test_log_emits_infer_started_with_attributes` | `backend_infer_started` + n_refs / target_shape / backend attrs |
 | `test_log_emits_infer_completed_with_attributes` | `backend_infer_completed` + n_masks / backend attrs |
-| `test_log_skips_emission_on_validation_failure` | No emit when `_validate` raises |
 
 ### test/test_request_validator.py (18)
 
@@ -229,6 +219,40 @@ Iteration order:
 | `test_backend_error_str_includes_original_type_and_message` | str surfaces type + msg |
 | `test_warmup_delegates_to_inner` | warmup forwards |
 | `test_health_check_delegates_to_inner` | health_check forwards |
+
+### test/adapters/python/test_segment.py (12)
+
+Happy path:
+| Test | What |
+|------|------|
+| `test_returns_backend_infer_result_unchanged` | Adapter returns backend's InferResult untouched |
+| `test_passes_references_through_to_backend` | refs / masks forwarded without mutation |
+| `test_polymorphic_backend_accepted` | Decorator-wrapped Mock works through ABC |
+
+Layer 1 propagation (status 3):
+| Test | What |
+|------|------|
+| `test_invalid_image_error_propagates_unchanged` | Grayscale target -> InvalidImageError surfaces |
+| `test_invalid_image_rejection_skips_backend_call` | backend.infer never runs on validation fail |
+
+Layer 3 propagation (status 6 / 7):
+| Test | What |
+|------|------|
+| `test_reference_count_mismatch_propagates_unchanged` | len(refs) != len(masks) -> status 7 |
+| `test_reference_size_mismatch_propagates_unchanged` | Pair shape mismatch -> status 6 |
+| `test_reference_size_rejection_skips_backend_call` | backend.infer never runs on refs fail |
+
+Layer 4 propagation (status 11):
+| Test | What |
+|------|------|
+| `test_backend_error_propagates_unchanged` | ErrorHandlingBackend wrapping a raise -> BackendError(11) |
+| `test_value_error_from_unwrapped_backend_propagates` | Bare ValueError from unwrapped backend bubbles up |
+
+Validation order:
+| Test | What |
+|------|------|
+| `test_target_validation_runs_before_reference_validation` | Target check (Layer 1) precedes refs check (Layer 3) |
+| `test_reference_validation_runs_before_backend_call` | Refs check (Layer 3) precedes backend.infer |
 
 ### test/conftest.py (0 tests — shared fixtures only)
 
