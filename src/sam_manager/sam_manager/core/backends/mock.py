@@ -10,8 +10,6 @@ import numpy as np
 import structlog
 
 from sam_manager.core.backend import BackendInterface, InferResult
-from sam_manager.core.prompt_store import validate_references
-from sam_manager.core.request_validator import validate_target
 
 _logger = structlog.get_logger("sam_manager.core.backends.mock")
 
@@ -40,9 +38,16 @@ class MockBackend(BackendInterface):
         refs: List[np.ndarray],
         masks: List[np.ndarray],
     ) -> InferResult:
-        """Return a centered rectangular mask covering `mask_coverage` of target."""
-        self._validate(target, refs, masks)
+        """Return a centered rectangular mask covering `mask_coverage` of target.
 
+        The backend trusts the caller (Frontend Adapter or test
+        fixture) to have already passed inputs through Layer 1
+        ``validate_target`` + Layer 3 ``validate_references``. Mock
+        no longer self-defends; this aligns its behavior with
+        SegGPTBackend and future production backends so unit tests
+        catch missing-validator bugs instead of silently masking
+        them.
+        """
         _logger.info(
             "backend_infer_started",
             n_refs=len(refs),
@@ -82,25 +87,3 @@ class MockBackend(BackendInterface):
             backend="mock",
         )
         return result
-
-    @staticmethod
-    def _validate(
-        target: np.ndarray,
-        refs: List[np.ndarray],
-        masks: List[np.ndarray],
-    ) -> None:
-        """Validate request inputs via Layer 1 + Layer 3 helpers.
-
-        Target shape / dtype / non-empty (status 3 INVALID_IMAGE)
-        delegates to Layer 1 ``validate_target``. Reference count
-        (status 7) + per-pair shape / dtype / pair alignment
-        (status 6) delegate to Layer 3 ``validate_references``.
-
-        Once Frontend Adapter (ROS 2 srv handler / FastAPI handler)
-        lands, this Mock-internal validation becomes redundant -- the
-        adapter will call Layer 1 + Layer 3 before forwarding to
-        ``infer()``. Kept here so MockBackend is self-contained for
-        downstream unit tests in the meantime.
-        """
-        validate_target(target)
-        validate_references(refs, masks)
