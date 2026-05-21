@@ -68,93 +68,13 @@ def test_constructor_rejects_out_of_range_coverage():
         MockBackend(mask_coverage=1.5)
 
 
-def test_validation_target_must_be_rgb_uint8():
-    """target must be (H, W, 3) uint8."""
-    backend = MockBackend()
-    with pytest.raises(ValueError):
-        backend.infer(_gray(40, 40), [], [])           # 2D grayscale
-    with pytest.raises(ValueError):
-        backend.infer(_rgb(40, 40).astype(np.float32), [], [])  # wrong dtype
-    with pytest.raises(ValueError):
-        backend.infer(np.zeros((0, 0, 3), dtype=np.uint8), [], [])  # empty
-
-
-def test_validation_refs_and_masks_length_mismatch():
-    """refs and masks lists must have the same length."""
-    target = _rgb(20, 20)
-    backend = MockBackend()
-    with pytest.raises(ValueError):
-        backend.infer(target, [_rgb(20, 20)], [])      # 1 ref, 0 masks
-    with pytest.raises(ValueError):
-        backend.infer(target, [], [_gray(20, 20)])     # 0 refs, 1 mask
-
-
-def test_validation_refs_must_be_rgb_uint8():
-    """Each ref must be (H, W, 3) uint8."""
-    target = _rgb(20, 20)
-    backend = MockBackend()
-    with pytest.raises(ValueError):
-        backend.infer(target, [_gray(20, 20)], [_gray(20, 20)])
-
-
-def test_validation_masks_must_be_2d_uint8():
-    """Each ref mask must be (H, W) uint8 (single-channel)."""
-    target = _rgb(20, 20)
-    backend = MockBackend()
-    with pytest.raises(ValueError):
-        backend.infer(target, [_rgb(20, 20)], [_rgb(20, 20)])  # 3-channel mask
-
-
-def test_validation_pair_alignment():
-    """refs[i] and masks[i] must share H, W (image-mask pair alignment)."""
-    target = _rgb(20, 20)
-    backend = MockBackend()
-    # ref is 100x100 but mask is 50x50 — mismatched pair, must raise
-    with pytest.raises(ValueError, match="(?i)align|mismatch|shape"):
-        backend.infer(target, [_rgb(100, 100)], [_gray(50, 50)])
-
-
-def test_validation_target_rgba_four_channels():
-    """target with 4 channels (RGBA) must raise — only RGB accepted."""
-    rgba = np.zeros((40, 40, 4), dtype=np.uint8)
-    backend = MockBackend()
-    with pytest.raises(ValueError):
-        backend.infer(rgba, [], [])
-
-
-def test_validation_target_single_channel_pseudo_3d():
-    """target with shape (H, W, 1) must raise — pseudo 3D not allowed."""
-    pseudo = np.zeros((40, 40, 1), dtype=np.uint8)
-    backend = MockBackend()
-    with pytest.raises(ValueError):
-        backend.infer(pseudo, [], [])
-
-
-def test_validation_refs_dtype_non_uint8():
-    """refs[i] with non-uint8 dtype (e.g. uint16) must raise."""
-    target = _rgb(20, 20)
-    backend = MockBackend()
-    bad_ref = np.zeros((20, 20, 3), dtype=np.uint16)
-    with pytest.raises(ValueError):
-        backend.infer(target, [bad_ref], [_gray(20, 20)])
-
-
-def test_validation_masks_dtype_bool():
-    """masks[i] with bool dtype must raise — accept only uint8 binary."""
-    target = _rgb(20, 20)
-    backend = MockBackend()
-    bool_mask = np.zeros((20, 20), dtype=bool)
-    with pytest.raises(ValueError):
-        backend.infer(target, [_rgb(20, 20)], [bool_mask])
-
-
-def test_validation_masks_pseudo_3d():
-    """masks[i] with shape (H, W, 1) must raise — must be true 2D."""
-    target = _rgb(20, 20)
-    backend = MockBackend()
-    pseudo_mask = np.zeros((20, 20, 1), dtype=np.uint8)
-    with pytest.raises(ValueError):
-        backend.infer(target, [_rgb(20, 20)], [pseudo_mask])
+# Input validation cases (target / refs / masks shape / dtype / pair
+# alignment) were deleted when MockBackend retired its internal
+# _validate. The same coverage now lives in:
+#   - test/test_request_validator.py (Layer 1, status 3)
+#   - test/test_prompt_store.py       (Layer 3, status 6 / 7)
+#   - test/adapters/python/test_segment.py (validators run via the
+#     Python API Frontend Adapter on the realistic call path)
 
 
 # ─────────────────────────── Output validation ───────────────────────────
@@ -263,13 +183,10 @@ def test_log_emits_infer_completed_with_attributes():
     assert e["backend"] == "mock"
 
 
-def test_log_skips_emission_on_validation_failure():
-    """When _validate raises, no backend_infer_started/completed event is emitted."""
-    import structlog
-    backend = MockBackend()
-    with structlog.testing.capture_logs() as logs:
-        with pytest.raises(ValueError):
-            backend.infer(_gray(20, 20), [], [])  # grayscale target — invalid
-    events = [e["event"] for e in logs]
-    assert "backend_infer_started" not in events
-    assert "backend_infer_completed" not in events
+# test_log_skips_emission_on_validation_failure was deleted along
+# with Mock's _validate. Mock now trusts the caller has validated;
+# unconditional emit of backend_infer_started / completed is the
+# documented behavior (the structlog stream is the trace of "backend
+# ran", not "request was valid"). Validation-failure observability
+# moves to the Frontend Adapter, which logs the typed exception
+# before the backend is ever called.

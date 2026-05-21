@@ -51,13 +51,19 @@ def test_polymorphism_via_base_type():
 # instance identity by test_backend_error_holds_original_exception.
 
 
-def test_value_error_propagates_unchanged():
-    """ValueError from inner backend propagates (not wrapped) — Layer 1 owns it."""
-    wrapped = ErrorHandlingBackend(MockBackend())
-    # MockBackend raises ValueError on grayscale target — should bubble up
-    # as ValueError, not BackendError.
+def test_value_error_propagates_unchanged(boom_class):
+    """ValueError from inner backend propagates unchanged (Layer 1 / 3 owns it).
+
+    MockBackend no longer self-validates, so a backend-side ValueError
+    now comes from a deterministic raise fixture rather than feeding
+    malformed input to Mock. The wrapper invariant is the same:
+    ``except ValueError: raise`` lets the exception bubble out without
+    remapping to status_code 11 BACKEND_ERROR.
+    """
+    inner = boom_class(lambda: ValueError("validator-side error"))
+    wrapped = ErrorHandlingBackend(inner)
     with pytest.raises(ValueError):
-        wrapped.infer(np.zeros((10, 10), dtype=np.uint8), [], [])
+        wrapped.infer(_rgb(20, 20), [], [])
 
 
 # ─────────────────────────── Parametrized exception coverage ─────────

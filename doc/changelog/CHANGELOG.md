@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (Frontend Adapter — Python API tracer)
+
+- `sam_manager/adapters/python/segment.py` (NEW) — `segment(backend, target, refs, masks) -> InferResult`: the smallest Frontend Adapter shipped per architecture v4 §4. Calls Layer 1 `validate_target` then Layer 3 `validate_references` then `backend.infer`. Typed exceptions propagate unchanged (caller maps to wire representation; Python API does not own wire encoding). Intended for internal-test only (`Python API 不對外`).
+- `sam_manager/adapters/__init__.py` + `sam_manager/adapters/python/__init__.py` (NEW) — empty markers establishing the `adapters.<frontend>` subpackage that future ROS 2 srv handler + FastAPI app will inhabit (per ADR-0003).
+- `test/adapters/python/test_segment.py` (NEW) — 12 cases mirroring source layout (`test/adapters/python/` ↔ `sam_manager/adapters/python/`). Covers happy path / Layer 1 propagation / Layer 3 propagation / Layer 4 propagation (via `boom_class` fixture from #5) / validation order (target before refs, refs before `backend.infer`).
+- `docs/adr/{0001, 0002, 0003}.md` — three foundational ADRs surfaced through `/grill-with-docs` before this PR: Layer 1 module shape, typed-exceptions IS-A ValueError, `core/` subpackage is ROS-agnostic.
+
+### Changed (Layer 4 — Mock retires self-validation)
+
+- `MockBackend._validate` removed. Mock now trusts the caller (Frontend Adapter or test fixture) to have already passed inputs through Layer 1 + Layer 3 validators. Aligns Mock behavior with future SegGPTBackend / production backends so unit tests catch missing-validator bugs instead of silently masking them via Mock's per-backend redundant check.
+- `test_mock.py`: 11 input-validation cases deleted (already covered by `test_request_validator.py` + `test_prompt_store.py` + the new adapter test). `test_log_skips_emission_on_validation_failure` also deleted — Mock now emits `backend_infer_started` / `completed` unconditionally; validation-failure observability moves to the Frontend Adapter where the typed exception is caught before the backend runs. test_mock count: 29 -> 18.
+
 ### Added (Layer 3 — PromptStore validators)
 
 - `sam_manager/core/prompt_store.py` (NEW) — module-level `validate_references(refs, masks)` + typed exceptions `ReferenceCountMismatchError(STATUS_CODE = 7)` and `ReferenceSizeMismatchError(STATUS_CODE = 6)`. Per architecture v4 §4 + drawio Page 4, Layer 3 PromptStore emits status 6 REFERENCE_SIZE_MISMATCH (refs / masks shape / dtype / pair alignment) and status 7 REFERENCE_COUNT_MISMATCH (`len(refs) != len(masks)`). Both exceptions subclass `ValueError` so Layer 4 `ErrorHandlingBackend` propagates them unchanged (mirroring `InvalidImageError` pattern).
