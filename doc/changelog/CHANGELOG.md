@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (Frontend Adapter — FastAPI)
+
+- `sam_manager/adapters/fastapi/app.py` (NEW) — `create_app(backend, confidence_threshold=0.3) -> FastAPI` factory exposing `POST /segment`. Multipart upload (`target` + `reference_images[]` + `reference_masks[]` + optional `confidence_threshold` form field) decoded via PIL into ndarrays, validated through Layer 1 + Layer 3, forwarded to `backend.infer`, then packed through Layer 5 ConfidenceGate.evaluate into a wire-realistic JSON response.
+- `sam_manager/adapters/fastapi/models.py` (NEW) — pydantic `MaskRLEModel` + `BBoxModel` + `SegmentResponse` mirroring `sam_manager_msgs/srv/SegmentFromReference` so the future ROS 2 srv Adapter can lift the same packing logic.
+- Exception -> status_code mapping uses each typed exception's `STATUS_CODE` class constant (per ADR-0002): `InvalidImageError` → 3, `ReferenceCountMismatchError` → 7, `ReferenceSizeMismatchError` → 6, `BackendError` → 11. HTTP 200 + `status_code` field for every anticipated outcome; HTTP 4xx / 5xx reserved for transport-layer problems (missing form field, malformed multipart, FastAPI internals).
+- `test/adapters/fastapi/test_app.py` (NEW) — 16 integration cases via `starlette.testclient.TestClient`: happy path / Layer 5 statuses 1+2 / Layer 1 statuses 3 / Layer 3 statuses 6+7 / Layer 4 status 11 / error response shape / `confidence_threshold` form override.
+- `test/adapters/fastapi/test_models.py` (NEW) — 6 pydantic schema cases pinning field names, types, round-trip, and required-ness.
+- `setup.py install_requires` gains `fastapi`, `pillow`, `python-multipart`; `extras_require['test']` gains `httpx` for the TestClient backend. CI workflow `Install pip deps` step extended to match.
+
 ### Added (Layer 5 — ConfidenceGate)
 
 - `sam_manager/core/confidence_gate.py` (NEW) — `evaluate(result, confidence_threshold=0.3) -> ConfidenceGateOutput`. Consumes a backend's `InferResult` and produces the wire-facing fields: `has_mask`, `has_bbox`, `mask_rle_counts` (COCO column-major alternating runs starting with background), `mask_rle_size`, `bbox` (tight `(x, y, w, h)`), `confidence` (pass-through with `None` → 1.0 default), `status_code` (0 OK / 1 EMPTY_MASK / 2 LOW_CONFIDENCE), `error_message`. Status priority `EMPTY_MASK > LOW_CONFIDENCE > OK`. Custom RLE encoder (no pycocotools dep) — ~15 lines of numpy.
