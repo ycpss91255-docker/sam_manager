@@ -17,7 +17,6 @@ import io
 from typing import List
 
 import numpy as np
-import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
