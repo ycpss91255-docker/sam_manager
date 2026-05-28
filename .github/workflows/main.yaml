@@ -32,15 +32,23 @@ jobs:
           rosdep update --rosdistro humble
           rosdep install --from-paths src --ignore-src -r -y
 
-      - name: Install pip deps not in rosdep (structlog + pytest-cov)
+      - name: Install pip deps not in rosdep
         shell: bash
         run: |
           # ros:humble-ros-base ships without pip; install it first.
-          # structlog + pytest-cov have no rosdep mapping on Ubuntu
-          # 22.04 so we install via pip until the Layer 1 docker
-          # scaffold can bake them into the image.
+          # structlog + pytest-cov + the FastAPI adapter dependency
+          # set (fastapi / pillow / python-multipart / httpx) have no
+          # rosdep mapping on Ubuntu 22.04 so we install via pip
+          # until the Layer 1 docker scaffold can bake them into the
+          # image. httpx is required by starlette.testclient.
           apt-get install -y --no-install-recommends python3-pip
-          python3 -m pip install structlog pytest-cov
+          python3 -m pip install \
+            structlog \
+            pytest-cov \
+            fastapi \
+            pillow \
+            python-multipart \
+            httpx
 
       - name: colcon build sam_manager_msgs + sam_manager
         shell: bash
