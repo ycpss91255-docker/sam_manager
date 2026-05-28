@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (Layer 5 — ConfidenceGate)
+
+- `sam_manager/core/confidence_gate.py` (NEW) — `evaluate(result, confidence_threshold=0.3) -> ConfidenceGateOutput`. Consumes a backend's `InferResult` and produces the wire-facing fields: `has_mask`, `has_bbox`, `mask_rle_counts` (COCO column-major alternating runs starting with background), `mask_rle_size`, `bbox` (tight `(x, y, w, h)`), `confidence` (pass-through with `None` → 1.0 default), `status_code` (0 OK / 1 EMPTY_MASK / 2 LOW_CONFIDENCE), `error_message`. Status priority `EMPTY_MASK > LOW_CONFIDENCE > OK`. Custom RLE encoder (no pycocotools dep) — ~15 lines of numpy.
+- `InferResult.confidence: Optional[float] = None` (Layer 4 schema change). Backend self-reports confidence; Layer 5 applies the threshold. None means "backend did not report" and Layer 5 treats it as 1.0 so backends pre-dating this field do not start tripping status 2 the moment the gate lands.
+- `MockBackend(mask_coverage=0.25, confidence=1.0)` (Layer 4 backend) — new `confidence` constructor parameter, default 1.0, surfaced verbatim on `InferResult.confidence`. Validated 0..1 like `mask_coverage`.
+- `test/test_confidence_gate.py` (NEW) — 26 unit cases covering output shape, happy path, EMPTY_MASK behaviour, LOW_CONFIDENCE behaviour, status priority, bbox geometry, RLE encoding (round-trip + alternation invariant + foreground-start prepend + empty mask convention), and ValueError on empty masks list.
+- `test/test_mock.py` — 3 new cases for the confidence param (default 1.0, constructor flows to result, out-of-range rejection). Constructor-validation cases now exercise both `mask_coverage` and `confidence` independently.
+- `docs/adr/0004-layer-5-confidence-gate-shape.md` (NEW) — records confidence sourcing rules, `has_mask` strict-zero policy, `has_bbox` mirroring for PIXEL_MASK backends, status priority, `confidence_threshold` as function parameter, and the in-house RLE encoder decision.
+
 ### Added (Frontend Adapter — Python API tracer)
 
 - `sam_manager/adapters/python/segment.py` (NEW) — `segment(backend, target, refs, masks) -> InferResult`: the smallest Frontend Adapter shipped per architecture v4 §4. Calls Layer 1 `validate_target` then Layer 3 `validate_references` then `backend.infer`. Typed exceptions propagate unchanged (caller maps to wire representation; Python API does not own wire encoding). Intended for internal-test only (`Python API 不對外`).
