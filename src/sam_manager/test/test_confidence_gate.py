@@ -64,8 +64,7 @@ def test_output_is_confidence_gate_output_instance():
 
 
 def test_output_carries_all_required_fields():
-    """All wire-facing fields are present (has_mask / has_bbox / mask_rle /
-    bbox / confidence / status_code)."""
+    """Output carries every wire-facing field with expected types."""
     out = evaluate(_result(_centered_mask(40, 40, 5, 5)))
     assert isinstance(out.has_mask, bool)
     assert isinstance(out.has_bbox, bool)
