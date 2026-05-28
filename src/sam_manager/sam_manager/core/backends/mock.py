@@ -17,20 +17,32 @@ _logger = structlog.get_logger("sam_manager.core.backends.mock")
 class MockBackend(BackendInterface):
     """Synthetic backend that produces a fixed-coverage centered mask."""
 
-    def __init__(self, mask_coverage: float = 0.25) -> None:
-        """Initialize the mock with a fixed mask area fraction.
+    def __init__(
+        self,
+        mask_coverage: float = 0.25,
+        confidence: float = 1.0,
+    ) -> None:
+        """Initialize the mock with a fixed mask area + confidence.
 
         Args:
             mask_coverage: fraction of the target area covered by the
                 output mask, in [0, 1]. Default 0.25 (1/4 of the image).
+            confidence: backend-reported confidence in the produced
+                mask, in [0, 1]. Default 1.0 (max confident). Layer 5
+                ConfidenceGate consumes this value to decide status 2
+                LOW_CONFIDENCE.
 
         Raises:
-            ValueError: mask_coverage is outside [0, 1].
+            ValueError: mask_coverage or confidence is outside [0, 1].
         """
         if not 0.0 <= mask_coverage <= 1.0:
             raise ValueError(
                 f"mask_coverage must be in [0, 1], got {mask_coverage}")
+        if not 0.0 <= confidence <= 1.0:
+            raise ValueError(
+                f"confidence must be in [0, 1], got {confidence}")
         self._coverage = mask_coverage
+        self._confidence = confidence
 
     def infer(
         self,
@@ -79,6 +91,7 @@ class MockBackend(BackendInterface):
             class_ids=[0],
             latency_ms=None,
             gpu_mem_mb=None,
+            confidence=self._confidence,
         )
 
         _logger.info(

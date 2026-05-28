@@ -22,17 +22,17 @@ docker run --rm -v "$(pwd):/work" -w /work ros:humble-ros-base bash -c '
 '
 ```
 
-Total: **100 unit tests** + 1 skipped (`test_copyright` — opt-in once
+Total: **129 unit tests** + 1 skipped (`test_copyright` — opt-in once
 a per-file header policy is decided) plus `ament_flake8` and
-`ament_pep257` (both run via `colcon test`). `100` includes
-`test_error_handler.py` parametrized expansion (19 collected) and
-the new `test/adapters/python/test_segment.py` (12); `test_mock.py`
-shrank from 29 -> 18 when MockBackend retired self-validation
-(coverage moved to Layer 1 / Layer 3 validators + adapter tests).
+`ament_pep257` (both run via `colcon test`). `129` includes
+`test_error_handler.py` parametrized expansion (19 collected),
+`test_mock.py` (18 + 3 new confidence cases = 21),
+`test_confidence_gate.py` (26 new), and
+`test/adapters/python/test_segment.py` (12).
 
-Line coverage: **100%** at this revision; CI gate is **80%** so the
-remaining layers (2, 5) can be added without immediately tightening
-the bar.
+Line coverage: **100%** at this revision; CI gate is **80%** so
+the remaining layer (Layer 2 RequestQueue) can be added without
+immediately tightening the bar.
 
 ## 4-category coverage
 
@@ -41,7 +41,7 @@ Per CLAUDE.md「TDD 測試分類（4 個面向）」:
 | # | Category | Where | What it covers |
 |---|----------|-------|----------------|
 | 1 | Smoke | `test/test_*.py` (any) | Package + module import + ABC instantiability + `colcon build` success |
-| 2 | Unit | `test/test_backend.py` / `test/test_mock.py` / `test/test_error_handler.py` / `test/test_request_validator.py` / `test/test_prompt_store.py` | BackendInterface ABC, MockBackend behaviour, ErrorHandling decorator, Layer 1 target validator, Layer 3 reference validators |
+| 2 | Unit | `test/test_backend.py` / `test/test_mock.py` / `test/test_error_handler.py` / `test/test_request_validator.py` / `test/test_prompt_store.py` / `test/test_confidence_gate.py` | BackendInterface ABC, MockBackend behaviour, ErrorHandling decorator, Layer 1 target validator, Layer 3 reference validators, Layer 5 ConfidenceGate |
 | 3 | Integration | `test/adapters/python/test_segment.py` — Frontend Adapter calls Layer 1 + Layer 3 validators then backend; exercises typed-exception propagation across layers | Python API adapter (first vertical slice); future ROS 2 / FastAPI adapter tests will join here |
 | 4 | Lint | `test/test_flake8.py` + `test/test_pep257.py` + `test/test_copyright.py` (skipped) | flake8 (ament default) + pep257 with Google-style ignores |
 
@@ -59,7 +59,67 @@ Per CLAUDE.md「TDD 測試分類（4 個面向）」:
 | `test_subclass_can_override_warmup` | Subclass replacement of warmup fires |
 | `test_subclass_can_override_health_check_returning_false` | Subclass may report unhealthy |
 
-### test/test_mock.py (18)
+### test/test_confidence_gate.py (26)
+
+Output shape:
+| Test | What |
+|------|------|
+| `test_output_is_confidence_gate_output_instance` | Returns ConfidenceGateOutput dataclass |
+| `test_output_carries_all_required_fields` | All wire fields present |
+
+Happy path (non-empty mask):
+| Test | What |
+|------|------|
+| `test_non_empty_mask_sets_has_mask_true` | Any positive pixel -> has_mask=True |
+| `test_non_empty_mask_sets_has_bbox_true` | has_bbox mirrors has_mask |
+| `test_non_empty_mask_emits_status_zero` | High-confidence non-empty -> status 0 |
+| `test_confidence_passes_through` | InferResult.confidence verbatim |
+| `test_confidence_unreported_defaults_to_one` | None -> 1.0 |
+
+EMPTY_MASK (status 1):
+| Test | What |
+|------|------|
+| `test_empty_mask_sets_has_mask_false` | All-zero -> has_mask=False |
+| `test_empty_mask_sets_has_bbox_false` | All-zero -> has_bbox=False |
+| `test_empty_mask_emits_status_one` | All-zero -> status 1 |
+| `test_empty_mask_rle_counts_is_empty_list` | counts == [] (wire "no mask") |
+| `test_empty_mask_rle_size_still_carries_shape` | size still (H, W) |
+| `test_empty_mask_bbox_is_zero` | bbox (0, 0, 0, 0) |
+
+LOW_CONFIDENCE (status 2):
+| Test | What |
+|------|------|
+| `test_low_confidence_with_non_empty_mask_emits_status_two` | conf < threshold -> status 2 |
+| `test_confidence_at_threshold_passes` | conf == threshold OK |
+| `test_default_threshold_is_zero_point_three` | 0.29 fails, 0.30 passes (default 0.3) |
+
+Status priority:
+| Test | What |
+|------|------|
+| `test_empty_mask_priority_over_low_confidence` | EMPTY > LOW when both apply |
+
+bbox geometry:
+| Test | What |
+|------|------|
+| `test_bbox_tight_around_pixels` | Tight rect around positive pixels |
+| `test_bbox_single_pixel` | Single pixel -> (x, y, 1, 1) |
+| `test_bbox_fully_filled` | Full mask -> full image |
+
+RLE encoding:
+| Test | What |
+|------|------|
+| `test_rle_size_is_h_w_tuple` | size is (H, W) tuple |
+| `test_rle_counts_sum_equals_pixel_count` | Sum of counts == H*W |
+| `test_rle_starts_with_background_run` | Foreground-first prepends 0 |
+| `test_rle_all_background` | Empty mask -> counts is [] |
+| `test_rle_alternating_runs_match_mask` | Manually constructed mask matches |
+
+Validation:
+| Test | What |
+|------|------|
+| `test_evaluate_rejects_empty_masks_list` | Empty masks list raises ValueError |
+
+### test/test_mock.py (21)
 
 Constructor:
 | Test | What |

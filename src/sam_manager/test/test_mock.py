@@ -68,6 +68,26 @@ def test_constructor_rejects_out_of_range_coverage():
         MockBackend(mask_coverage=1.5)
 
 
+def test_default_confidence_is_one():
+    """Mock reports confidence 1.0 by default (max confident)."""
+    result = MockBackend().infer(_rgb(20, 20), [], [])
+    assert result.confidence == 1.0
+
+
+def test_constructor_confidence_flows_to_result():
+    """Constructor's confidence param surfaces on InferResult.confidence."""
+    result = MockBackend(confidence=0.42).infer(_rgb(20, 20), [], [])
+    assert result.confidence == 0.42
+
+
+def test_constructor_rejects_out_of_range_confidence():
+    """confidence outside [0, 1] raises ValueError."""
+    with pytest.raises(ValueError):
+        MockBackend(confidence=-0.1)
+    with pytest.raises(ValueError):
+        MockBackend(confidence=1.5)
+
+
 # Input validation cases (target / refs / masks shape / dtype / pair
 # alignment) were deleted when MockBackend retired its internal
 # _validate. The same coverage now lives in:
