@@ -11,7 +11,7 @@ docker run --rm -v "$(pwd):/work" -w /work ros:humble-ros-base bash -c '
   apt-get install -y --no-install-recommends python3-pip
   rosdep update --rosdistro humble
   rosdep install --from-paths src --ignore-src -r -y
-  python3 -m pip install structlog pytest-cov
+  python3 -m pip install structlog pytest-cov fastapi pillow python-multipart httpx
   . /opt/ros/humble/setup.bash
   colcon build --packages-select sam_manager_msgs sam_manager
   . install/setup.bash
@@ -22,13 +22,12 @@ docker run --rm -v "$(pwd):/work" -w /work ros:humble-ros-base bash -c '
 '
 ```
 
-Total: **129 unit tests** + 1 skipped (`test_copyright` — opt-in once
+Total: **151 unit tests** + 1 skipped (`test_copyright` — opt-in once
 a per-file header policy is decided) plus `ament_flake8` and
-`ament_pep257` (both run via `colcon test`). `129` includes
-`test_error_handler.py` parametrized expansion (19 collected),
-`test_mock.py` (18 + 3 new confidence cases = 21),
-`test_confidence_gate.py` (26 new), and
-`test/adapters/python/test_segment.py` (12).
+`ament_pep257` (both run via `colcon test`). Delta from previous
+revision: +16 `test/adapters/fastapi/test_app.py` (integration
+cases via `starlette.testclient.TestClient`) and +6
+`test/adapters/fastapi/test_models.py` (pydantic schema invariants).
 
 Line coverage: **100%** at this revision; CI gate is **80%** so
 the remaining layer (Layer 2 RequestQueue) can be added without
@@ -42,7 +41,7 @@ Per CLAUDE.md「TDD 測試分類（4 個面向）」:
 |---|----------|-------|----------------|
 | 1 | Smoke | `test/test_*.py` (any) | Package + module import + ABC instantiability + `colcon build` success |
 | 2 | Unit | `test/test_backend.py` / `test/test_mock.py` / `test/test_error_handler.py` / `test/test_request_validator.py` / `test/test_prompt_store.py` / `test/test_confidence_gate.py` | BackendInterface ABC, MockBackend behaviour, ErrorHandling decorator, Layer 1 target validator, Layer 3 reference validators, Layer 5 ConfidenceGate |
-| 3 | Integration | `test/adapters/python/test_segment.py` — Frontend Adapter calls Layer 1 + Layer 3 validators then backend; exercises typed-exception propagation across layers | Python API adapter (first vertical slice); future ROS 2 / FastAPI adapter tests will join here |
+| 3 | Integration | `test/adapters/python/test_segment.py` + `test/adapters/fastapi/test_app.py` + `test/adapters/fastapi/test_models.py` | Python API adapter (raw InferResult pass-through); FastAPI adapter (HTTP route -> validate -> infer -> ConfidenceGate -> JSON wire response); pydantic schema contracts |
 | 4 | Lint | `test/test_flake8.py` + `test/test_pep257.py` + `test/test_copyright.py` (skipped) | flake8 (ament default) + pep257 with Google-style ignores |
 
 ## Test inventory
@@ -313,6 +312,59 @@ Validation order:
 |------|------|
 | `test_target_validation_runs_before_reference_validation` | Target check (Layer 1) precedes refs check (Layer 3) |
 | `test_reference_validation_runs_before_backend_call` | Refs check (Layer 3) precedes backend.infer |
+
+### test/adapters/fastapi/test_app.py (16)
+
+Happy path (status 0):
+| Test | What |
+|------|------|
+| `test_happy_path_returns_status_zero` | Mock default confidence -> status 0 |
+| `test_happy_path_returns_has_mask_true` | Non-empty mask -> has_mask=true |
+| `test_happy_path_returns_mask_rle` | RLE counts sum + size match target |
+| `test_happy_path_returns_bbox` | Non-zero bbox for non-empty mask |
+| `test_happy_path_returns_confidence` | Mock default 1.0 surfaces |
+| `test_happy_path_carries_references` | ref + mask pair still status 0 |
+
+Layer 5 statuses (1 / 2):
+| Test | What |
+|------|------|
+| `test_empty_mask_returns_status_one` | Mock(coverage=0.0) -> status 1 + counts=[] |
+| `test_low_confidence_returns_status_two` | Mock(confidence=0.1) -> status 2 |
+
+Layer 1 / 3 statuses (3 / 6 / 7):
+| Test | What |
+|------|------|
+| `test_invalid_target_shape_returns_status_three` | RGBA target -> 3 |
+| `test_garbage_bytes_target_returns_status_three` | PIL parse fail -> 3 |
+| `test_reference_count_mismatch_returns_status_seven` | 2 refs + 1 mask -> 7 |
+| `test_reference_size_mismatch_returns_status_six` | pair size differ -> 6 |
+
+Layer 4 status (11):
+| Test | What |
+|------|------|
+| `test_backend_error_returns_status_eleven` | Wrapped BoomBackend -> 11 |
+
+Error response shape:
+| Test | What |
+|------|------|
+| `test_error_message_carried_on_failure` | non-empty error_message |
+| `test_error_response_still_carries_full_shape` | every field serialised |
+
+Threshold control:
+| Test | What |
+|------|------|
+| `test_confidence_threshold_form_field_overrides_default` | form field flows in |
+
+### test/adapters/fastapi/test_models.py (6)
+
+| Test | What |
+|------|------|
+| `test_mask_rle_model_accepts_minimal_inputs` | Empty counts + size valid |
+| `test_mask_rle_model_round_trip` | dump -> validate preserves fields |
+| `test_bbox_model_carries_four_ints` | All four int fields |
+| `test_segment_response_carries_all_required_fields` | Full response instantiates |
+| `test_segment_response_round_trip` | dump -> validate preserves SegmentResponse |
+| `test_segment_response_rejects_missing_field` | Missing has_bbox -> ValidationError |
 
 ### test/conftest.py (0 tests — shared fixtures only)
 
